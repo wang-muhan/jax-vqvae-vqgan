@@ -32,6 +32,7 @@ from utils.pretrained_resnet import get_pretrained_embs, get_pretrained_model
 from utils.fid import get_fid_network, fid_from_stats
 from models.vqvae import VQVAE
 from models.discriminator import Discriminator
+from utils.dataloader import get_dataloader
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string('dataset_name', 'imagenet256', 'Environment name.')
@@ -222,38 +223,40 @@ def main(_):
     if jax.process_index() == 0:
         setup_wandb(FLAGS.model.to_dict(), **FLAGS.wandb)
 
-    def get_dataset(is_train):
-        if 'imagenet' in FLAGS.dataset_name:
-            def deserialization_fn(data):
-                image = data['image']
-                min_side = tf.minimum(tf.shape(image)[0], tf.shape(image)[1])
-                image = tf.image.resize_with_crop_or_pad(image, min_side, min_side)
-                if 'imagenet256' in FLAGS.dataset_name:
-                    image = tf.image.resize(image, (256, 256))
-                elif 'imagenet128' in FLAGS.dataset_name:
-                    image = tf.image.resize(image, (128, 128))
-                else:
-                    raise ValueError(f"Unknown dataset {FLAGS.dataset_name}")
-                if is_train:
-                    image = tf.image.random_flip_left_right(image)
-                image = tf.cast(image, tf.float32) / 255.0
-                return image
+    # def get_dataset(is_train):
+    #     if 'imagenet' in FLAGS.dataset_name:
+    #         def deserialization_fn(data):
+    #             image = data['image']
+    #             min_side = tf.minimum(tf.shape(image)[0], tf.shape(image)[1])
+    #             image = tf.image.resize_with_crop_or_pad(image, min_side, min_side)
+    #             if 'imagenet256' in FLAGS.dataset_name:
+    #                 image = tf.image.resize(image, (256, 256))
+    #             elif 'imagenet128' in FLAGS.dataset_name:
+    #                 image = tf.image.resize(image, (128, 128))
+    #             else:
+    #                 raise ValueError(f"Unknown dataset {FLAGS.dataset_name}")
+    #             if is_train:
+    #                 image = tf.image.random_flip_left_right(image)
+    #             image = tf.cast(image, tf.float32) / 255.0
+    #             return image
 
-            split = tfds.split_for_jax_process('train' if is_train else 'validation', drop_remainder=True)
-            dataset = tfds.load('imagenet2012', split=split)
-            dataset = dataset.map(deserialization_fn, num_parallel_calls=tf.data.AUTOTUNE)
-            dataset = dataset.shuffle(10000, seed=42, reshuffle_each_iteration=True)
-            dataset = dataset.repeat()
-            dataset = dataset.batch(local_batch_size)
-            dataset = dataset.prefetch(tf.data.AUTOTUNE)
-            dataset = tfds.as_numpy(dataset)
-            dataset = iter(dataset)
-            return dataset
-        else:
-            raise ValueError(f"Unknown dataset {FLAGS.dataset_name}")
+    #         split = tfds.split_for_jax_process('train' if is_train else 'validation', drop_remainder=True)
+    #         dataset = tfds.load('imagenet2012', split=split)
+    #         dataset = dataset.map(deserialization_fn, num_parallel_calls=tf.data.AUTOTUNE)
+    #         dataset = dataset.shuffle(10000, seed=42, reshuffle_each_iteration=True)
+    #         dataset = dataset.repeat()
+    #         dataset = dataset.batch(local_batch_size)
+    #         dataset = dataset.prefetch(tf.data.AUTOTUNE)
+    #         dataset = tfds.as_numpy(dataset)
+    #         dataset = iter(dataset)
+    #         return dataset
+    #     else:
+    #         raise ValueError(f"Unknown dataset {FLAGS.dataset_name}")
         
-    dataset = get_dataset(is_train=True)
-    dataset_valid = get_dataset(is_train=False)
+    # dataset = get_dataset(is_train=True)
+    # dataset_valid = get_dataset(is_train=False)
+    dataset = get_dataloader(FLAGS, path='/mnt/disks/imagenet/train')
+    dataset_valid = get_dataloader(FLAGS, path='/mnt/disks/imagenet/val')
     example_obs = next(dataset)[:1]
 
     get_fid_activations = get_fid_network()
